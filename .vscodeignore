@@ -1,0 +1,6 @@
+api-docs.yaml
+.vscode/**
+src/**
+**/*.map
+tsconfig.json
+README-assets/**

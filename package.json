@@ -1,0 +1,126 @@
+{
+  "name": "invoiceninja-vscode",
+  "displayName": "Invoice Ninja Time Tracker",
+  "description": "Track time in VS Code/Cursor and sync to Invoice Ninja tasks.",
+  "license": "MIT",
+  "version": "0.0.1",
+  "publisher": "SvenBledt",
+  "icon": "media/invoiceninja.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SvenBledt/invoiceninja-vscode"
+  },
+  "keywords": [
+    "invoice ninja",
+    "time tracking",
+    "vs code",
+    "cursor"
+  ],
+  "engines": {
+    "vscode": "^1.92.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onView:invoiceNinja.sidebar",
+    "onCommand:invoiceNinja.openSidebar",
+    "onCommand:invoiceNinja.configure",
+    "onCommand:invoiceNinja.startTimer",
+    "onCommand:invoiceNinja.stopTimer",
+    "onCommand:invoiceNinja.showStatus",
+    "onCommand:invoiceNinja.refresh",
+    "onCommand:invoiceNinja.logout"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "invoiceNinja",
+          "title": "Invoice Ninja",
+          "icon": "media/invoiceninja-activity.svg"
+        }
+      ]
+    },
+    "views": {
+      "invoiceNinja": [
+        {
+          "id": "invoiceNinja.sidebar",
+          "name": "Time Tracker",
+          "type": "webview"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "invoiceNinja.openSidebar",
+        "title": "Invoice Ninja: Open Sidebar"
+      },
+      {
+        "command": "invoiceNinja.configure",
+        "title": "Invoice Ninja: Configure API"
+      },
+      {
+        "command": "invoiceNinja.startTimer",
+        "title": "Invoice Ninja: Start Timer"
+      },
+      {
+        "command": "invoiceNinja.stopTimer",
+        "title": "Invoice Ninja: Stop Timer"
+      },
+      {
+        "command": "invoiceNinja.showStatus",
+        "title": "Invoice Ninja: Show Status"
+      },
+      {
+        "command": "invoiceNinja.refresh",
+        "title": "Invoice Ninja: Refresh"
+      },
+      {
+        "command": "invoiceNinja.logout",
+        "title": "Invoice Ninja: Logout"
+      }
+    ],
+    "configuration": {
+      "title": "Invoice Ninja",
+      "properties": {
+        "invoiceNinja.defaultBaseUrl": {
+          "type": "string",
+          "default": "https://invoicing.co",
+          "description": "Base URL of your Invoice Ninja instance (for example https://invoicing.co or your self-hosted URL)."
+        },
+        "invoiceNinja.defaultClientId": {
+          "type": "string",
+          "default": "",
+          "description": "Default hashed client_id for new tasks (optional)."
+        },
+        "invoiceNinja.defaultProjectId": {
+          "type": "string",
+          "default": "",
+          "description": "Default hashed project_id for new tasks (optional)."
+        },
+        "invoiceNinja.requestTimeoutMs": {
+          "type": "number",
+          "default": 15000,
+          "description": "HTTP timeout for Invoice Ninja API requests in milliseconds."
+        },
+        "invoiceNinja.autoResumeTimer": {
+          "type": "boolean",
+          "default": true,
+          "description": "Restore active timer state after VS Code/Cursor restart."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "vscode:prepublish": "npm run compile"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.15",
+    "@types/vscode": "^1.92.0",
+    "typescript": "^5.5.4"
+  }
+}
