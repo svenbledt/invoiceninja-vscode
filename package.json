@@ -3,7 +3,7 @@
   "displayName": "Invoice Ninja Time Tracker",
   "description": "Track time in VS Code/Cursor and sync to Invoice Ninja tasks.",
   "license": "MIT",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "publisher": "SvenBledt",
   "icon": "media/invoiceninja.png",
   "repository": {
@@ -39,7 +39,7 @@
         {
           "id": "invoiceNinja",
           "title": "Invoice Ninja",
-          "icon": "media/invoiceninja.svg"
+          "icon": "media/invoiceninja.png"
         }
       ]
     },
