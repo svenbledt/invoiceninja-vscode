@@ -661,11 +661,26 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     <meta charset="utf-8" />
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} data:; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';" />
     <style>
-    body{font-family:Segoe UI,Arial;background:#1b232e;color:#f4f7fb;margin:0;padding:12px} .h{display:flex;justify-content:space-between;align-items:center} .l{display:flex;gap:8px;align-items:center}
-    .logo{width:30px;height:30px;border-radius:50%;overflow:hidden;border:1px solid #405164} .logo img{width:100%;height:100%} input,select,button{background:#1f2935;color:#fff;border:1px solid #405164;border-radius:6px;padding:8px}
-    .row{display:flex;gap:6px;align-items:center;margin-top:6px} .grow{flex:1} .task{border:1px solid #405164;border-radius:8px;padding:10px;margin-top:8px} .task h3{margin:0 0 6px 0} .meta{font-size:12px;opacity:.85}
-    .pill{background:#fff;color:#000;border-radius:8px;padding:2px 8px;font-size:12px;font-weight:700} .right{margin-left:auto;display:flex;align-items:center;gap:8px} .menu{border:1px solid #405164;border-radius:8px;margin-top:4px}
-    .menu button{width:100%;text-align:left;background:transparent;border:0;padding:8px} .hide{display:none} .err{color:#f87171} .ok{color:#86efac}
+    :root{--bg:#1b232e;--fg:#f4f7fb;--muted:#a8b7c8;--input:#1f2935;--border:#405164;--card:#1f2935;--pill-bg:#fff;--pill-fg:#000;--ok:#86efac;--err:#f87171}
+    body.light{--bg:#f6f8fb;--fg:#18212b;--muted:#4b5b6c;--input:#ffffff;--border:#c7d3df;--card:#ffffff;--pill-bg:#18212b;--pill-fg:#ffffff;--ok:#0f8a47;--err:#c02626}
+    body{font-family:Segoe UI,Arial;background:var(--bg);color:var(--fg);margin:0;padding:12px}
+    .h{display:flex;justify-content:space-between;align-items:center}
+    .l{display:flex;gap:8px;align-items:center}
+    .logo{width:30px;height:30px;border-radius:50%;overflow:hidden;border:1px solid var(--border)}
+    .logo img{width:100%;height:100%}
+    input,select,button{background:var(--input);color:var(--fg);border:1px solid var(--border);border-radius:6px;padding:8px}
+    .row{display:flex;gap:6px;align-items:center;margin-top:6px}
+    .grow{flex:1}
+    .task{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px;margin-top:8px}
+    .task h3{margin:0 0 6px 0}
+    .meta{font-size:12px;color:var(--muted)}
+    .pill{background:var(--pill-bg);color:var(--pill-fg);border-radius:8px;padding:2px 8px;font-size:12px;font-weight:700}
+    .right{margin-left:auto;display:flex;align-items:center;gap:8px}
+    .menu{border:1px solid var(--border);border-radius:8px;margin-top:4px}
+    .menu button{width:100%;text-align:left;background:transparent;border:0;padding:8px}
+    .hide{display:none}
+    .err{color:var(--err)}
+    .ok{color:var(--ok)}
     </style></head><body>
     <div id="auth"><div class="l"><div class="logo"><img src="${logoUri}" /></div><strong>InvoiceNinja</strong></div>
     <div class="row"><input id="email" class="grow" placeholder="E-mail address" /></div>
@@ -753,6 +768,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     function render(payload) {
       if (!payload) return;
       state.data = payload;
+      document.body.classList.toggle("light", payload.theme === "light");
+      $("theme").textContent = payload.theme === "light" ? "Switch to Dark Mode" : "Switch to Light Mode";
       $("auth").classList.toggle("hide", payload.authenticated);
       $("work").classList.toggle("hide", !payload.authenticated);
 
