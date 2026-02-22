@@ -3,7 +3,7 @@ import { ApiError } from "../api/invoiceNinjaClient";
 import { AuthService } from "../services/authService";
 import { TaskService } from "../services/taskService";
 import { TimerService } from "../services/timerService";
-import { AuthMode, IncomingMessage, LoginInput, SidebarState, TaskReminder, ThemeMode } from "../types/contracts";
+import { AuthMode, IncomingMessage, LoginInput, SidebarState, TaskReminder } from "../types/contracts";
 import { renderSidebarHtml } from "./webview/template";
 import { isTimerOnlyStateUpdate } from "./webview/stateDiff";
 
@@ -237,9 +237,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           await this.createTaskReminder(message.payload.taskId, message.payload.value);
           break;
         case "openTaskMenu":
-          break;
-        case "toggleTheme":
-          await this.toggleTheme();
           break;
       }
     } catch (error) {
@@ -544,14 +541,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     await this.context.globalState.update(REMINDER_STORAGE_KEY, reminders);
   }
 
-  private async toggleTheme(): Promise<void> {
-    const session = await this.taskService.getSessionOrThrow();
-    const prefs = await this.taskService.getPreferences(session.accountKey);
-    const nextTheme: ThemeMode = prefs.theme === "dark" ? "light" : "dark";
-    await this.taskService.updatePreferences(session.accountKey, { theme: nextTheme });
-    this.lastMessage = `Switched to ${nextTheme} mode`;
-  }
-
   private async pushState(timerOnly = false): Promise<void> {
     let state: SidebarState;
     if (timerOnly && this.lastState && this.lastState.authenticated && this.lastState.isTimerRunning) {
@@ -610,7 +599,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         accountLabel: "",
         accountEmail: "",
         baseUrl: this.defaultBaseUrl,
-        theme: "dark",
         tasks: [],
         statuses: [],
         projects: [],
@@ -646,7 +634,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       accountLabel: session.accountLabel || session.email,
       accountEmail: session.email,
       baseUrl: session.baseUrl,
-      theme: prefs.theme,
       tasks,
       statuses,
       projects: this.taskService.getProjects(),

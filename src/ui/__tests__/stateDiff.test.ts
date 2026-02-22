@@ -11,7 +11,6 @@ function baseState(): SidebarState {
     accountLabel: "Test",
     accountEmail: "a@b.com",
     baseUrl: "https://invoicing.co",
-    theme: "dark",
     tasks: [
       {
         id: "1",

@@ -390,7 +390,6 @@ function render(payload) {
   $("mail").textContent = payload.accountEmail;
   $("base").textContent = payload.baseUrl;
   $("q").value = payload.lastSearchText || "";
-  $("theme").textContent = payload.theme === "light" ? "Switch to Dark Mode" : "Switch to Light Mode";
 
   setOptions($("sf"), payload.statuses, "Status", payload.selectedStatusId);
   setProjectOptions($("pf"), payload.projects, payload.selectedProjectId, "Project");
@@ -439,7 +438,6 @@ $("login").addEventListener("click", () => {
 });
 
 $("refresh").addEventListener("click", () => vscode.postMessage({ type: "refresh" }));
-$("theme").addEventListener("click", () => vscode.postMessage({ type: "toggleTheme" }));
 $("logout").addEventListener("click", () => vscode.postMessage({ type: "logout" }));
 $("save").addEventListener("click", () => vscode.postMessage({ type: "saveTask", payload: { description: $("q").value.trim() } }));
 $("search").addEventListener("click", () => vscode.postMessage({ type: "search", payload: { text: $("q").value.trim() } }));

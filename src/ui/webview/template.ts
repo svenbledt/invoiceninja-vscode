@@ -57,7 +57,6 @@ export function renderSidebarHtml(input: SidebarHtmlInput): string {
         <div id="mail" class="meta"></div>
         <div id="base" class="meta"></div>
         <div class="row">
-          <button id="theme" type="button">Toggle Theme</button>
           <button id="logout" type="button">Logout</button>
         </div>
       </div>

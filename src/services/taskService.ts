@@ -4,7 +4,6 @@ import { InvoiceNinjaClient } from "../api/invoiceNinjaClient";
 import { AccountPreferences, AuthSession, InvoiceNinjaProject, InvoiceNinjaTask, InvoiceNinjaTaskStatus, InvoiceNinjaUser } from "../types/contracts";
 
 const DEFAULT_PREFS: AccountPreferences = {
-  theme: "dark",
   selectedStatusId: "",
   selectedProjectId: "",
   lastSearchText: "",

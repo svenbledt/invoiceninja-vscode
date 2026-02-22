@@ -1,5 +1,4 @@
 export type AuthMode = "cloud" | "selfhost";
-export type ThemeMode = "dark" | "light";
 
 export interface AuthSession {
   mode: AuthMode;
@@ -70,7 +69,6 @@ export interface ActiveTimerSession {
 }
 
 export interface AccountPreferences {
-  theme: ThemeMode;
   selectedStatusId: string;
   selectedProjectId: string;
   lastSearchText: string;
@@ -104,7 +102,6 @@ export interface SidebarState {
   accountLabel: string;
   accountEmail: string;
   baseUrl: string;
-  theme: ThemeMode;
   tasks: InvoiceNinjaTask[];
   statuses: InvoiceNinjaTaskStatus[];
   projects: InvoiceNinjaProject[];
@@ -145,5 +142,4 @@ export type IncomingMessage =
   | { type: "saveTaskEdit"; payload: { taskId: string; description: string; projectId: string; assignedUserId: string; rate: string } }
   | { type: "archiveTask"; payload: { taskId: string } }
   | { type: "deleteTask"; payload: { taskId: string } }
-  | { type: "taskReminder"; payload: { taskId: string; value: string } }
-  | { type: "toggleTheme" };
+  | { type: "taskReminder"; payload: { taskId: string; value: string } };
