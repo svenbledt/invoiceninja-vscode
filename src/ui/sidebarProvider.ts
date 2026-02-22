@@ -2,8 +2,10 @@ import * as vscode from "vscode";
 import { ApiError } from "../api/invoiceNinjaClient";
 import { AuthService } from "../services/authService";
 import { TaskService } from "../services/taskService";
-import { parseTimeLog, TimerService } from "../services/timerService";
+import { TimerService } from "../services/timerService";
 import { AuthMode, IncomingMessage, LoginInput, SidebarState, TaskReminder, ThemeMode } from "../types/contracts";
+import { renderSidebarHtml } from "./webview/template";
+import { isTimerOnlyStateUpdate } from "./webview/stateDiff";
 
 const VIEW_ID = "invoiceNinja.sidebar";
 const REMINDER_STORAGE_KEY = "invoiceNinja.taskReminders.v1";
@@ -20,6 +22,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   private remindersLoaded = false;
   private readonly reminderTimers = new Map<string, NodeJS.Timeout>();
   private authDraft: { mode: AuthMode; email: string; url: string; secret: string };
+  private lastState: SidebarState | null = null;
 
   public constructor(
     private readonly context: vscode.ExtensionContext,
@@ -549,8 +552,26 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     this.lastMessage = `Switched to ${nextTheme} mode`;
   }
 
-  private async pushState(): Promise<void> {
-    const state = await this.buildState();
+  private async pushState(timerOnly = false): Promise<void> {
+    let state: SidebarState;
+    if (timerOnly && this.lastState && this.lastState.authenticated && this.lastState.isTimerRunning) {
+      const active = await this.timerService.getActiveTimer();
+      if (!active) {
+        state = await this.buildState();
+      } else {
+        const candidate: SidebarState = {
+          ...this.lastState,
+          isTimerRunning: true,
+          timerTaskId: active.taskId,
+          timerElapsedSeconds: this.timerService.formatElapsedSeconds(active),
+        };
+        state = isTimerOnlyStateUpdate(this.lastState, candidate) ? candidate : await this.buildState();
+      }
+    } else {
+      state = await this.buildState();
+    }
+
+    this.lastState = state;
     this.updateStatusBar(state);
     this.updateTicker(state);
     if (this.view) {
@@ -566,7 +587,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           return;
         }
         this.ticking = true;
-        void this.pushState().finally(() => {
+        void this.pushState(true).finally(() => {
           this.ticking = false;
         });
       }, 1000);
@@ -656,213 +677,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   private getHtml(webview: vscode.Webview): string {
     const nonce = generateNonce();
     const logoUri = webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, "media", "invoiceninja.svg"));
-
-    return `<!doctype html><html><head>
-    <meta charset="utf-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} data:; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';" />
-    <style>
-    :root{--bg:#1b232e;--fg:#f4f7fb;--muted:#a8b7c8;--input:#1f2935;--border:#405164;--card:#1f2935;--pill-bg:#fff;--pill-fg:#000;--ok:#86efac;--err:#f87171}
-    body.light{--bg:#f6f8fb;--fg:#18212b;--muted:#4b5b6c;--input:#ffffff;--border:#c7d3df;--card:#ffffff;--pill-bg:#18212b;--pill-fg:#ffffff;--ok:#0f8a47;--err:#c02626}
-    body{font-family:Segoe UI,Arial;background:var(--bg);color:var(--fg);margin:0;padding:12px}
-    .h{display:flex;justify-content:space-between;align-items:center}
-    .l{display:flex;gap:8px;align-items:center}
-    .logo{width:30px;height:30px;border-radius:50%;overflow:hidden;border:1px solid var(--border)}
-    .logo img{width:100%;height:100%}
-    input,select,button{background:var(--input);color:var(--fg);border:1px solid var(--border);border-radius:6px;padding:8px}
-    .row{display:flex;gap:6px;align-items:center;margin-top:6px}
-    .grow{flex:1}
-    .task{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px;margin-top:8px}
-    .task h3{margin:0 0 6px 0}
-    .meta{font-size:12px;color:var(--muted)}
-    .pill{background:var(--pill-bg);color:var(--pill-fg);border-radius:8px;padding:2px 8px;font-size:12px;font-weight:700}
-    .right{margin-left:auto;display:flex;align-items:center;gap:8px}
-    .menu{border:1px solid var(--border);border-radius:8px;margin-top:4px}
-    .menu button{width:100%;text-align:left;background:transparent;border:0;padding:8px}
-    .hide{display:none}
-    .err{color:var(--err)}
-    .ok{color:var(--ok)}
-    </style></head><body>
-    <div id="auth"><div class="l"><div class="logo"><img src="${logoUri}" /></div><strong>InvoiceNinja</strong></div>
-    <div class="row"><input id="email" class="grow" placeholder="E-mail address" /></div>
-    <div class="row"><input id="password" type="password" class="grow" placeholder="Password" /></div>
-    <div class="row"><input id="otp" class="grow" placeholder="One Time Password" /></div>
-    <div id="sh" class="hide"><div class="row"><input id="url" class="grow" placeholder="URL" /></div><div class="row"><input id="secret" class="grow" placeholder="Secret" /></div></div>
-    <div class="row"><button id="login" class="grow">Log in</button></div><button id="mode">Self-hosting? Click to set URL</button><div id="amsg" class="meta"></div></div>
-
-    <div id="work" class="hide"><div class="h"><div class="l"><div class="logo"><img src="${logoUri}" /></div><strong id="acc"></strong></div><div><button id="refresh">↻</button><button id="menu">☰</button></div></div>
-    <div id="mp" class="hide"><div class="meta" id="mail"></div><div class="meta" id="base"></div><button id="theme">Toggle Theme</button><button id="logout">Logout</button></div>
-    <div id="list"><div class="row"><input id="q" class="grow" placeholder="What are you working on?" /><button id="save">Save</button><button id="search">⌕</button></div>
-    <div class="row"><select id="sf"></select><select id="pf"></select></div><div id="tasks"></div><div id="empty" class="meta hide">No tasks found.</div></div>
-    <div id="edit" class="hide"><div class="meta">Home / Tasks / Edit</div><h2 id="enum"></h2><div class="row"><input id="edesc" class="grow" placeholder="Description" /></div><div class="row"><select id="eproj" class="grow"></select></div><div class="row"><input id="erate" class="grow" type="number" /></div><div class="row"><select id="euser" class="grow"></select></div><div class="row"><button id="esave" class="grow">Save</button><button id="eback">Back</button></div></div>
-    <div id="wmsg" class="meta"></div></div>
-    <script nonce="${nonce}">
-    const vscode = acquireVsCodeApi();
-    const state = { mode: "cloud", menu: false, openMenu: "", editId: "", data: null };
-    const $ = (id) => document.getElementById(id);
-
-    $("mode").onclick = () => { state.mode = state.mode === "cloud" ? "selfhost" : "cloud"; $("sh").classList.toggle("hide", state.mode !== "selfhost"); vscode.postMessage({ type: "toggleMode", mode: state.mode }); };
-    $("login").onclick = () => vscode.postMessage({ type: "login", payload: { mode: state.mode, email: $("email").value.trim(), password: $("password").value, otp: $("otp").value.trim(), url: $("url").value.trim(), secret: $("secret").value } });
-    $("refresh").onclick = () => vscode.postMessage({ type: "refresh" });
-    $("menu").onclick = () => { state.menu = !state.menu; $("mp").classList.toggle("hide", !state.menu); };
-    $("theme").onclick = () => vscode.postMessage({ type: "toggleTheme" });
-    $("logout").onclick = () => vscode.postMessage({ type: "logout" });
-    $("save").onclick = () => vscode.postMessage({ type: "saveTask", payload: { description: $("q").value.trim() } });
-    $("search").onclick = () => vscode.postMessage({ type: "search", payload: { text: $("q").value.trim() } });
-    $("sf").onchange = (e) => vscode.postMessage({ type: "setStatusFilter", payload: { statusId: e.target.value } });
-    $("pf").onchange = (e) => vscode.postMessage({ type: "setProjectFilter", payload: { projectId: e.target.value } });
-    $("esave").onclick = () => { if (!state.editId) return; vscode.postMessage({ type: "saveTaskEdit", payload: { taskId: state.editId, description: $("edesc").value, projectId: $("eproj").value, assignedUserId: $("euser").value, rate: $("erate").value } }); };
-    $("eback").onclick = () => { state.editId = ""; render(state.data); };
-
-    function taskNo(task) { return (task.number && String(task.number).trim()) ? String(task.number) : String(task.id || "").slice(0, 4).padStart(4, "0"); }
-    function statusName(task, statuses) { const id = String(task.task_status_id || task.status_id || ""); const s = statuses.find((x) => String(x.id) === id); return s ? (s.name || id) : (id || "Backlog"); }
-    function parseClockText(value) {
-      if (typeof value !== "string" || !value.includes(":")) return NaN;
-      const parts = value.split(":").map((x) => Number(x));
-      if (parts.some((x) => !Number.isFinite(x))) return NaN;
-      if (parts.length === 3) return (parts[0] * 3600) + (parts[1] * 60) + parts[2];
-      if (parts.length === 2) return (parts[0] * 60) + parts[1];
-      return NaN;
-    }
-    function parseNumericDuration(raw, decimalMeansHours) {
-      if (raw === undefined || raw === null || raw === "") return NaN;
-      const clock = parseClockText(raw);
-      if (Number.isFinite(clock)) return clock;
-      const text = String(raw).trim();
-      const n = Number(text);
-      if (!Number.isFinite(n)) return NaN;
-      const isDecimal = text.includes(".") || Math.abs(n - Math.trunc(n)) > 0;
-      if (decimalMeansHours && isDecimal) return Math.round(n * 3600);
-      return Math.max(0, Math.round(n));
-    }
-    function totalSeconds(task, payload) {
-      if (payload.isTimerRunning && payload.timerTaskId === task.id) return payload.timerElapsedSeconds;
-
-      const fromDuration = parseNumericDuration(task.duration, true);
-      if (Number.isFinite(fromDuration) && fromDuration > 0) return fromDuration;
-
-      const raw = task.time_log;
-      const direct = parseNumericDuration(raw, true);
-      if (Number.isFinite(direct) && direct > 0 && (typeof raw !== "string" || !raw.trim().startsWith("["))) {
-        return direct;
-      }
-
-      try {
-        const arr = JSON.parse(task.time_log || "[]");
-        const now = Math.floor(Date.now() / 1000);
-        return Array.isArray(arr)
-          ? arr.reduce((sum, seg) => {
-              if (!Array.isArray(seg) || seg.length < 2) return sum;
-              const s = Number(seg[0]) || 0;
-              const e = Number(seg[1]) || 0;
-              return sum + (s ? Math.max(0, (e > 0 ? e : now) - s) : 0);
-            }, 0)
-          : 0;
-      } catch {
-        return 0;
-      }
-    }
-    function userLabel(user) { const full = ((user.first_name || "") + " " + (user.last_name || "")).trim(); return esc(full || user.display_name || user.email || user.id); }
-    function esc(v) { return String(v).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;"); }
-    function fmt(s) { const h = String(Math.floor(s/3600)); const m = String(Math.floor((s%3600)/60)).padStart(2, "0"); const sec = String(Math.floor(s%60)).padStart(2, "0"); return h + ":" + m + ":" + sec; }
-
-    function render(payload) {
-      if (!payload) return;
-      state.data = payload;
-      document.body.classList.toggle("light", payload.theme === "light");
-      $("theme").textContent = payload.theme === "light" ? "Switch to Dark Mode" : "Switch to Light Mode";
-      $("auth").classList.toggle("hide", payload.authenticated);
-      $("work").classList.toggle("hide", !payload.authenticated);
-
-      if (!payload.authenticated) {
-        $("email").value = payload.authForm.email || "";
-        $("url").value = payload.authForm.url || "";
-        $("secret").value = payload.authForm.secret || "";
-        state.mode = payload.mode;
-        $("sh").classList.toggle("hide", state.mode !== "selfhost");
-        $("amsg").className = "meta " + (payload.errorMessage ? "err" : payload.infoMessage ? "ok" : "");
-        $("amsg").textContent = payload.errorMessage || payload.infoMessage || "";
-        return;
-      }
-
-      $("acc").textContent = payload.accountLabel;
-      $("mail").textContent = payload.accountEmail;
-      $("base").textContent = payload.baseUrl;
-      $("q").value = payload.lastSearchText || "";
-      $("sf").innerHTML = "<option value=''>Status</option>" + payload.statuses.map((s) => "<option value='" + s.id + "'>" + (s.name || s.id) + "</option>").join("");
-      $("sf").value = payload.selectedStatusId || "";
-      $("pf").innerHTML = "<option value=''>Project</option>" + payload.projects.map((p) => "<option value='" + p.id + "'>" + (p.name || p.id) + "</option>").join("");
-      $("pf").value = payload.selectedProjectId || "";
-
-      const editing = payload.editTask && state.editId === payload.editTask.id;
-      $("list").classList.toggle("hide", editing);
-      $("edit").classList.toggle("hide", !editing);
-      if (editing) {
-        $("enum").textContent = taskNo(payload.editTask);
-        $("edesc").value = payload.editTask.description || "";
-        $("erate").value = String(payload.editTask.rate || 0);
-        $("eproj").innerHTML = "<option value=''>-- Unassigned --</option>" + payload.projects.map((p) => "<option value='" + p.id + "'>" + (p.name || p.id) + "</option>").join("");
-        $("eproj").value = payload.editTask.project_id || "";
-        $("euser").innerHTML = "<option value=''>-- Unassigned --</option>" + payload.users.map((u) => "<option value='" + u.id + "'>" + userLabel(u) + "</option>").join("");
-        $("euser").value = payload.editTask.assigned_user_id || "";
-      }
-
-      const container = $("tasks");
-      container.innerHTML = "";
-      payload.tasks.forEach((task) => {
-        const card = document.createElement("div");
-        const running = payload.isTimerRunning && payload.timerTaskId === task.id;
-        card.className = "task" + (payload.selectedTaskId === task.id ? " active" : "");
-        card.innerHTML = "<h3>" + esc(task.description || "(no description)") + "</h3>" +
-          "<div class='row'><span class='meta'><strong>" + esc(taskNo(task)) + "</strong></span><button class='pill' data-a='assign-status' data-id='" + task.id + "'>" + esc(statusName(task, payload.statuses)) + "</button>" +
-          "<button data-a='assign-user' data-id='" + task.id + "'>👤</button><button data-a='assign-project' data-id='" + task.id + "'>🗂</button>" +
-          "<span class='right'>⏱ " + fmt(totalSeconds(task, payload)) + " <button data-a='toggle' data-id='" + task.id + "'>" + (running ? "■" : "▶") + "</button><button data-a='menu' data-id='" + task.id + "'>⋮</button></span></div>";
-
-        if (state.openMenu === task.id) {
-          const menu = document.createElement("div");
-          menu.className = "menu";
-          menu.innerHTML = "<button data-a='edit' data-id='" + task.id + "'>Edit</button>" +
-            "<button data-a='archive' data-id='" + task.id + "'>Archive</button>" +
-            "<button data-a='delete' data-id='" + task.id + "'>Delete</button>" +
-            "<button data-a='rem' data-id='" + task.id + "' data-v='5 minutes'>Reminder 5 minutes</button>" +
-            "<button data-a='rem' data-id='" + task.id + "' data-v='30 minutes'>Reminder 30 minutes</button>" +
-            "<button data-a='rem' data-id='" + task.id + "' data-v='2 hours'>Reminder 2 hours</button>" +
-            "<button data-a='rem' data-id='" + task.id + "' data-v='24 hours'>Reminder 24 hours</button>" +
-            "<button data-a='rem' data-id='" + task.id + "' data-v='Custom'>Reminder custom</button>";
-          card.appendChild(menu);
-        }
-
-        card.onclick = (event) => {
-          const t = event.target.closest("[data-a]");
-          if (!t) {
-            vscode.postMessage({ type: "selectTask", payload: { taskId: task.id } });
-            return;
-          }
-          const id = t.getAttribute("data-id") || task.id;
-          const action = t.getAttribute("data-a");
-          if (action === "assign-status") vscode.postMessage({ type: "assignTaskStatus", payload: { taskId: id } });
-          if (action === "assign-user") vscode.postMessage({ type: "assignUser", payload: { taskId: id } });
-          if (action === "assign-project") vscode.postMessage({ type: "assignProject", payload: { taskId: id } });
-          if (action === "toggle") {
-            if (running) vscode.postMessage({ type: "stopTimer", payload: { taskId: id } });
-            else vscode.postMessage({ type: "startTimer", payload: { taskId: id } });
-          }
-          if (action === "menu") { state.openMenu = state.openMenu === id ? "" : id; render(payload); }
-          if (action === "edit") { state.editId = id; state.openMenu = ""; vscode.postMessage({ type: "editTask", payload: { taskId: id } }); }
-          if (action === "archive") { state.openMenu = ""; vscode.postMessage({ type: "archiveTask", payload: { taskId: id } }); }
-          if (action === "delete") { state.openMenu = ""; vscode.postMessage({ type: "deleteTask", payload: { taskId: id } }); }
-          if (action === "rem") { state.openMenu = ""; vscode.postMessage({ type: "taskReminder", payload: { taskId: id, value: t.getAttribute("data-v") || "Custom" } }); }
-        };
-        container.appendChild(card);
-      });
-
-      $("empty").classList.toggle("hide", payload.tasks.length > 0);
-      $("wmsg").className = "meta " + (payload.errorMessage ? "err" : payload.infoMessage ? "ok" : "");
-      $("wmsg").textContent = payload.errorMessage || payload.infoMessage || "";
-    }
-
-    window.addEventListener("message", (event) => { if (event.data && event.data.type === "state") render(event.data.payload); });
-    vscode.postMessage({ type: "ready" });
-    </script></body></html>`;
+    return renderSidebarHtml({
+      cspSource: webview.cspSource,
+      nonce,
+      logoUri: logoUri.toString(),
+    });
   }
 
   private toUserMessage(error: unknown): string {
@@ -898,37 +717,4 @@ function formatDuration(totalSeconds: number): string {
 function userLabel(user: { first_name?: string; last_name?: string; display_name?: string; email?: string; id: string }): string {
   const full = `${user.first_name ?? ""} ${user.last_name ?? ""}`.trim();
   return full || user.display_name || user.email || user.id;
-}
-
-export function taskElapsedSeconds(task: { duration?: number | string; time_log?: string }, nowUnix = Math.floor(Date.now() / 1000)): number {
-  const durationText = task.duration === undefined || task.duration === null ? "" : String(task.duration).trim();
-  if (durationText) {
-    if (durationText.includes(":")) {
-      const parts = durationText.split(":").map((value) => Number(value));
-      if (parts.length === 3 && parts.every((value) => Number.isFinite(value))) {
-        return Math.max(0, Math.round(parts[0] * 3600 + parts[1] * 60 + parts[2]));
-      }
-      if (parts.length === 2 && parts.every((value) => Number.isFinite(value))) {
-        return Math.max(0, Math.round(parts[0] * 60 + parts[1]));
-      }
-    }
-
-    const duration = Number(durationText);
-    if (Number.isFinite(duration)) {
-      if (durationText.includes(".") || Math.abs(duration - Math.trunc(duration)) > 0) {
-        return Math.max(0, Math.round(duration * 3600));
-      }
-      return Math.max(0, Math.round(duration));
-    }
-  }
-
-  const segments = parseTimeLog(task.time_log);
-  return segments.reduce((sum, segment) => {
-    const start = Number(segment[0]) || 0;
-    const end = Number(segment[1]) || 0;
-    if (!start) {
-      return sum;
-    }
-    return sum + Math.max(0, (end > 0 ? end : nowUnix) - start);
-  }, 0);
 }
