@@ -116,7 +116,8 @@
   "scripts": {
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "vscode:prepublish": "npm run compile"
+    "vscode:prepublish": "pnpm run compile",
+    "test": "pnpm run compile && node --test out/ui/__tests__/stateDiff.test.js out/ui/__tests__/taskElapsedSeconds.test.js"
   },
   "devDependencies": {
     "@types/node": "^20.14.15",

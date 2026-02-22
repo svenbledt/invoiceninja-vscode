@@ -61,3 +61,7 @@ Command palette shortcuts:
 ## Known Limitation
 
 - Google OAuth sign-in is not available in this version.
+
+## For Developers
+
+For development details, see `docs/DEVELOPER.md`.
