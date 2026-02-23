@@ -9,7 +9,6 @@ function baseState(): SidebarState {
     mode: "cloud",
     authForm: { email: "a@b.com", url: "https://invoicing.co", secret: "" },
     accountLabel: "Test",
-    accountEmail: "a@b.com",
     baseUrl: "https://invoicing.co",
     tasks: [
       {

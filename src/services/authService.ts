@@ -1,6 +1,6 @@
-import * as vscode from "vscode";
+import type * as vscode from "vscode";
 import { InvoiceNinjaClient } from "../api/invoiceNinjaClient";
-import { AuthMode, AuthSession, LoginInput } from "../types/contracts";
+import { AuthMode, AuthSession, InvoiceNinjaCompany, LoginInput } from "../types/contracts";
 
 const SECRET_KEYS = {
   mode: "invoiceNinja.auth.mode",
@@ -11,12 +11,24 @@ const SECRET_KEYS = {
   accountLabel: "invoiceNinja.auth.accountLabel",
 };
 
+const DEFAULT_ACCOUNT_LABEL = "Invoice Ninja";
+
+interface InvoiceNinjaSettings {
+  get<T>(section: string, defaultValue: T): T;
+}
+
+function defaultSettingsFactory(): InvoiceNinjaSettings {
+  const runtimeVscode = require("vscode") as typeof import("vscode");
+  return runtimeVscode.workspace.getConfiguration("invoiceNinja") as InvoiceNinjaSettings;
+}
+
 export class AuthService {
   private session: AuthSession | null = null;
 
   public constructor(
     private readonly context: vscode.ExtensionContext,
     private readonly client: InvoiceNinjaClient,
+    private readonly getSettings: () => InvoiceNinjaSettings = defaultSettingsFactory,
   ) {}
 
   public async getSession(): Promise<AuthSession | null> {
@@ -24,7 +36,7 @@ export class AuthService {
       return this.session;
     }
 
-    const [mode, baseUrl, email, apiToken, apiSecret, accountLabel] = await Promise.all([
+    const [mode, baseUrl, email, apiToken, apiSecret, rawAccountLabel] = await Promise.all([
       this.context.secrets.get(SECRET_KEYS.mode),
       this.context.secrets.get(SECRET_KEYS.baseUrl),
       this.context.secrets.get(SECRET_KEYS.email),
@@ -37,29 +49,36 @@ export class AuthService {
       return null;
     }
 
-    this.session = {
+    const session: AuthSession = {
       mode: (mode as AuthMode) ?? "cloud",
       baseUrl,
       email,
       apiToken,
       apiSecret: apiSecret ?? undefined,
-      accountLabel: accountLabel || email,
+      accountLabel: (rawAccountLabel ?? "").trim(),
       accountKey: this.getAccountKey(baseUrl, email),
     };
 
-    if (!this.session.accountLabel || /token/i.test(this.session.accountLabel)) {
-      const resolved = await this.resolveCompanyName(this.session);
-      if (resolved) {
-        this.session.accountLabel = resolved;
-        await this.context.secrets.store(SECRET_KEYS.accountLabel, resolved);
-      }
+    if (this.isInvalidAccountLabel(session.accountLabel, email)) {
+      const resolved = await this.resolveCompanyName(session);
+      session.accountLabel = this.finalizeAccountLabel(resolved, email);
     }
 
-    return this.session;
+    if (!session.accountLabel) {
+      session.accountLabel = DEFAULT_ACCOUNT_LABEL;
+    }
+
+    const storedLabel = rawAccountLabel ?? "";
+    if (session.accountLabel !== storedLabel) {
+      await this.context.secrets.store(SECRET_KEYS.accountLabel, session.accountLabel);
+    }
+
+    this.session = session;
+    return session;
   }
 
   public async login(input: LoginInput): Promise<AuthSession> {
-    const settings = vscode.workspace.getConfiguration("invoiceNinja");
+    const settings = this.getSettings();
     const fallbackUrl = String(settings.get("defaultBaseUrl", "https://invoicing.co"));
     const baseUrl = this.normalizeUrl(input.mode === "selfhost" ? input.url || "" : fallbackUrl);
     if (!baseUrl) {
@@ -73,32 +92,33 @@ export class AuthService {
       throw new Error("Login succeeded but no API token was found in the response");
     }
 
-    const session: AuthSession = {
+    const nextSession: AuthSession = {
       mode: input.mode,
       baseUrl,
       email: input.email,
       apiToken: token,
       apiSecret: input.secret || undefined,
-      accountLabel: this.extractAccountLabel(response) || input.email,
+      accountLabel: "",
       accountKey: this.getAccountKey(baseUrl, input.email),
     };
 
-    const resolvedCompany = await this.resolveCompanyName(session);
-    if (resolvedCompany) {
-      session.accountLabel = resolvedCompany;
+    let accountLabel = this.extractAccountLabel(response);
+    if (this.isInvalidAccountLabel(accountLabel, input.email)) {
+      accountLabel = await this.resolveCompanyName(nextSession);
     }
+    nextSession.accountLabel = this.finalizeAccountLabel(accountLabel, input.email);
 
-    this.session = session;
+    this.session = nextSession;
     await Promise.all([
-      this.context.secrets.store(SECRET_KEYS.mode, session.mode),
-      this.context.secrets.store(SECRET_KEYS.baseUrl, session.baseUrl),
-      this.context.secrets.store(SECRET_KEYS.email, session.email),
-      this.context.secrets.store(SECRET_KEYS.apiToken, session.apiToken),
-      this.context.secrets.store(SECRET_KEYS.accountLabel, session.accountLabel),
-      this.context.secrets.store(SECRET_KEYS.apiSecret, session.apiSecret ?? ""),
+      this.context.secrets.store(SECRET_KEYS.mode, nextSession.mode),
+      this.context.secrets.store(SECRET_KEYS.baseUrl, nextSession.baseUrl),
+      this.context.secrets.store(SECRET_KEYS.email, nextSession.email),
+      this.context.secrets.store(SECRET_KEYS.apiToken, nextSession.apiToken),
+      this.context.secrets.store(SECRET_KEYS.accountLabel, nextSession.accountLabel),
+      this.context.secrets.store(SECRET_KEYS.apiSecret, nextSession.apiSecret ?? ""),
     ]);
 
-    return session;
+    return nextSession;
   }
 
   public async logout(): Promise<void> {
@@ -136,30 +156,22 @@ export class AuthService {
   }
 
   private extractAccountLabel(payload: unknown): string {
-    const companyLabel = this.findCompanyLabel(payload);
-    if (companyLabel) {
-      return companyLabel;
-    }
-
-    const generic = this.findStringByKeys(payload, ["name", "company_name", "display_name"]);
-    if (generic && !/token/i.test(generic)) {
-      return generic;
-    }
-
-    return "";
-  }
-
-  private findCompanyLabel(payload: unknown): string {
     const candidates = [
+      this.findNestedString(payload, ["company", "settings", "name"]),
+      this.findNestedString(payload, ["data", "company", "settings", "name"]),
+      this.findNestedString(payload, ["company_user", "company", "settings", "name"]),
+      this.findNestedString(payload, ["data", "company_user", "company", "settings", "name"]),
       this.findNestedString(payload, ["data", "company", "name"]),
       this.findNestedString(payload, ["data", "company", "company_name"]),
       this.findNestedString(payload, ["company", "name"]),
       this.findNestedString(payload, ["company", "company_name"]),
       this.findNestedString(payload, ["company_user", "company", "name"]),
+      this.findNestedString(payload, ["company_user", "company", "company_name"]),
       this.findNestedString(payload, ["data", "company_user", "company", "name"]),
+      this.findNestedString(payload, ["data", "company_user", "company", "company_name"]),
     ];
 
-    const hit = candidates.find((value) => Boolean(value && value.trim() && !/token/i.test(value)));
+    const hit = candidates.find((value) => Boolean(value && value.trim()));
     return hit ?? "";
   }
 
@@ -203,20 +215,69 @@ export class AuthService {
     return "";
   }
 
+  private isInvalidAccountLabel(label: string, email: string): boolean {
+    const value = label.trim();
+    if (!value) {
+      return true;
+    }
+    if (/token/i.test(value)) {
+      return true;
+    }
+    if (value.toLowerCase() === email.trim().toLowerCase()) {
+      return true;
+    }
+    if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value)) {
+      return true;
+    }
+    if (/(mozilla\/|applewebkit\/|chrome\/|safari\/|edg\/|firefox\/|windows nt)/i.test(value)) {
+      return true;
+    }
+    return false;
+  }
+
+  private finalizeAccountLabel(candidate: string, email: string): string {
+    const normalized = candidate.trim();
+    if (this.isInvalidAccountLabel(normalized, email)) {
+      return DEFAULT_ACCOUNT_LABEL;
+    }
+    return normalized;
+  }
+
+  private readCompanyLabel(company: InvoiceNinjaCompany | null | undefined): string {
+    if (!company) {
+      return "";
+    }
+    const candidates = [company.settings?.name, company.name, company.company_name];
+    const hit = candidates.find((value) => typeof value === "string" && value.trim());
+    return hit ? hit.trim() : "";
+  }
+
   private async resolveCompanyName(session: AuthSession): Promise<string> {
-    const settings = vscode.workspace.getConfiguration("invoiceNinja");
+    const settings = this.getSettings();
     const timeoutMs = Number(settings.get("requestTimeoutMs", 15000));
 
     try {
-      const companies = await this.client.listCompanies(session.baseUrl, session, timeoutMs);
-      const first = companies.find((company) => (company.name || company.company_name || "").trim());
-      if (!first) {
-        return "";
+      const current = await this.client.getCurrentCompany(session.baseUrl, session, timeoutMs);
+      const label = this.readCompanyLabel(current);
+      if (label) {
+        return label;
       }
+    } catch {
+      // no-op: fall back to /companies listing
+    }
 
-      return first.name?.trim() || first.company_name?.trim() || "";
+    try {
+      const companies = await this.client.listCompanies(session.baseUrl, session, timeoutMs);
+      for (const company of companies) {
+        const label = this.readCompanyLabel(company);
+        if (label) {
+          return label;
+        }
+      }
     } catch {
       return "";
     }
+
+    return "";
   }
 }

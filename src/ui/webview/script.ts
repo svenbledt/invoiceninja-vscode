@@ -4,7 +4,6 @@ const vscode = acquireVsCodeApi();
 
 const state = {
   mode: "cloud",
-  menu: false,
   openMenu: "",
   editId: "",
   data: null,
@@ -387,8 +386,6 @@ function render(payload) {
   }
 
   $("acc").textContent = payload.accountLabel;
-  $("mail").textContent = payload.accountEmail;
-  $("base").textContent = payload.baseUrl;
   $("q").value = payload.lastSearchText || "";
 
   setOptions($("sf"), payload.statuses, "Status", payload.selectedStatusId);
@@ -465,12 +462,6 @@ $("eback").addEventListener("click", () => {
   }
 });
 
-$("menu").addEventListener("click", () => {
-  state.menu = !state.menu;
-  $("mp").classList.toggle("hide", !state.menu);
-  $("menu").setAttribute("aria-expanded", state.menu ? "true" : "false");
-});
-
 $("tasks").addEventListener("click", (event) => {
   const actionTarget = event.target.closest("[data-a]");
   const card = event.target.closest("[data-task-id]");
@@ -544,12 +535,6 @@ window.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
     if (state.openMenu) {
       closeMenuPanel();
-      event.preventDefault();
-    }
-    if (state.menu) {
-      state.menu = false;
-      $("mp").classList.add("hide");
-      $("menu").setAttribute("aria-expanded", "false");
       event.preventDefault();
     }
   }

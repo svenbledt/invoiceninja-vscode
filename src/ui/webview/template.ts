@@ -49,15 +49,7 @@ export function renderSidebarHtml(input: SidebarHtmlInput): string {
         </div>
         <div class="toolbar">
           <button id="refresh" type="button" aria-label="Refresh tasks">↻</button>
-          <button id="menu" type="button" aria-label="Open account menu" aria-expanded="false">☰</button>
-        </div>
-      </div>
-
-      <div id="mp" class="panel account-panel hide">
-        <div id="mail" class="meta"></div>
-        <div id="base" class="meta"></div>
-        <div class="row">
-          <button id="logout" type="button">Logout</button>
+          <button id="logout" type="button" aria-label="Logout">Logout</button>
         </div>
       </div>
 

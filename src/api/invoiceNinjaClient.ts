@@ -123,6 +123,15 @@ export class InvoiceNinjaClient {
     return this.unwrapList<InvoiceNinjaCompany>(response);
   }
 
+  public async getCurrentCompany(baseUrl: string, session: AuthSession, timeoutMs: number): Promise<InvoiceNinjaCompany> {
+    const response = await this.request<InvoiceNinjaCompany | { data: InvoiceNinjaCompany }>(baseUrl, "/api/v1/companies/current", {
+      method: "POST",
+      session,
+      timeoutMs,
+    });
+    return this.unwrapEntity(response);
+  }
+
   public async listTaskStatuses(baseUrl: string, session: AuthSession, timeoutMs: number): Promise<InvoiceNinjaTaskStatus[]> {
     const response = await this.request<PaginatedResponse<InvoiceNinjaTaskStatus> | InvoiceNinjaTaskStatus[]>(
       baseUrl,

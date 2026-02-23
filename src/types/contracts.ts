@@ -43,6 +43,9 @@ export interface InvoiceNinjaProject {
 
 export interface InvoiceNinjaCompany {
   id: string;
+  settings?: {
+    name?: string;
+  };
   name?: string;
   company_name?: string;
 }
@@ -100,7 +103,6 @@ export interface SidebarState {
     secret: string;
   };
   accountLabel: string;
-  accountEmail: string;
   baseUrl: string;
   tasks: InvoiceNinjaTask[];
   statuses: InvoiceNinjaTaskStatus[];

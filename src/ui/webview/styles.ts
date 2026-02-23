@@ -128,6 +128,12 @@ select:focus-visible {
 }
 
 .toolbar button {
+  width: auto;
+  min-width: 32px;
+  padding: 0 var(--space-2);
+}
+
+#refresh {
   width: 32px;
   min-width: 32px;
   padding: 0;
@@ -176,10 +182,6 @@ select:focus-visible {
   border-radius: var(--radius-2);
   padding: var(--space-2);
   background: var(--vscode-editorWidget-background, var(--vscode-sideBar-background));
-}
-
-.account-panel {
-  margin-bottom: var(--space-3);
 }
 
 .card {

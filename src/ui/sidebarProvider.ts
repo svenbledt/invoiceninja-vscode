@@ -250,7 +250,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const session = await this.authService.login(payload);
     await this.taskService.updatePreferences(session.accountKey, { lastSearchText: "", selectedTaskId: "" });
     await this.taskService.refresh(session);
-    this.lastMessage = `Logged in as ${session.email}`;
+    this.lastMessage = "Logged in";
   }
 
   private async saveTask(description: string): Promise<void> {
@@ -597,7 +597,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         mode: this.authDraft.mode,
         authForm: { email: this.authDraft.email, url: this.authDraft.url, secret: this.authDraft.secret },
         accountLabel: "",
-        accountEmail: "",
         baseUrl: this.defaultBaseUrl,
         tasks: [],
         statuses: [],
@@ -631,8 +630,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       authenticated: true,
       mode: session.mode,
       authForm: { email: session.email, url: session.baseUrl, secret: session.apiSecret ?? "" },
-      accountLabel: session.accountLabel || session.email,
-      accountEmail: session.email,
+      accountLabel: session.accountLabel || "Invoice Ninja",
       baseUrl: session.baseUrl,
       tasks,
       statuses,
