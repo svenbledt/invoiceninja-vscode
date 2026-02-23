@@ -1,5 +1,8 @@
 export type AuthMode = "cloud" | "selfhost";
 
+export const FILTER_VALUE_ALL = "__all";
+export const FILTER_VALUE_NONE = "__none";
+
 export interface AuthSession {
   mode: AuthMode;
   baseUrl: string;
@@ -69,6 +72,9 @@ export interface ActiveTimerSession {
   taskId: string;
   taskLabel: string;
   startedAtUnix: number;
+  worklogCurrentWorkspace?: string;
+  worklogSegmentStartedAtUnix?: number;
+  worklogDailyWorkspaceSeconds?: Record<string, number>;
 }
 
 export interface AccountPreferences {
@@ -112,6 +118,7 @@ export interface SidebarState {
   selectedStatusId: string;
   selectedProjectId: string;
   lastSearchText: string;
+  autoAppendWorkspaceWorklog: boolean;
   isTimerRunning: boolean;
   timerTaskId: string;
   timerElapsedSeconds: number;
@@ -134,6 +141,7 @@ export type IncomingMessage =
   | { type: "selectTask"; payload: { taskId: string } }
   | { type: "setStatusFilter"; payload: { statusId: string } }
   | { type: "setProjectFilter"; payload: { projectId: string } }
+  | { type: "setAutoWorklog"; payload: { enabled: boolean } }
   | { type: "startTimer"; payload?: { taskId?: string } }
   | { type: "stopTimer"; payload?: { taskId?: string } }
   | { type: "assignUser"; payload: { taskId: string } }

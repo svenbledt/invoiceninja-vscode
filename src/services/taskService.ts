@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { AuthService } from "./authService";
 import { InvoiceNinjaClient } from "../api/invoiceNinjaClient";
 import { AccountPreferences, AuthSession, InvoiceNinjaProject, InvoiceNinjaTask, InvoiceNinjaTaskStatus, InvoiceNinjaUser } from "../types/contracts";
+import { toApiFilterValue } from "./filterUtils";
 
 const DEFAULT_PREFS: AccountPreferences = {
   selectedStatusId: "",
@@ -63,8 +64,8 @@ export class TaskService {
       session,
       {
         search,
-        statusId: prefs.selectedStatusId || undefined,
-        projectId: prefs.selectedProjectId || undefined,
+        statusId: toApiFilterValue(prefs.selectedStatusId),
+        projectId: toApiFilterValue(prefs.selectedProjectId),
       },
       timeoutMs,
     );
@@ -85,8 +86,8 @@ export class TaskService {
       {
         description,
         client_id: defaultClientId || undefined,
-        project_id: prefs.selectedProjectId || String(settings.get("defaultProjectId", "")).trim() || undefined,
-        status_id: prefs.selectedStatusId || undefined,
+        project_id: toApiFilterValue(prefs.selectedProjectId) || String(settings.get("defaultProjectId", "")).trim() || undefined,
+        status_id: toApiFilterValue(prefs.selectedStatusId),
       },
       timeoutMs,
     );

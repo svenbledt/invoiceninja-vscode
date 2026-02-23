@@ -43,6 +43,7 @@ export function isTimerOnlyStateUpdate(previous: SidebarState | null, next: Side
     previous.selectedProjectId === next.selectedProjectId &&
     previous.selectedStatusId === next.selectedStatusId &&
     previous.lastSearchText === next.lastSearchText &&
+    previous.autoAppendWorkspaceWorklog === next.autoAppendWorkspaceWorklog &&
     previous.errorMessage === next.errorMessage &&
     previous.infoMessage === next.infoMessage &&
     previous.editTask?.id === next.editTask?.id

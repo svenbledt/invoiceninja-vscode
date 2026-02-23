@@ -27,7 +27,8 @@ body {
 
 button,
 input,
-select {
+select,
+textarea {
   width: 100%;
   min-height: 30px;
   border-radius: var(--radius-1);
@@ -35,6 +36,15 @@ select {
   background: var(--vscode-input-background);
   color: var(--vscode-input-foreground);
   padding: 0 var(--space-2);
+}
+
+textarea {
+  resize: none;
+  overflow: hidden;
+  min-height: 64px;
+  max-height: min(40vh, 280px);
+  padding: var(--space-2);
+  line-height: 1.4;
 }
 
 select {
@@ -77,9 +87,80 @@ button:hover {
 
 button:focus-visible,
 input:focus-visible,
-select:focus-visible {
+select:focus-visible,
+textarea:focus-visible {
   outline: 1px solid var(--vscode-focusBorder);
   outline-offset: 1px;
+}
+
+input[type="checkbox"] {
+  width: auto;
+  min-width: 16px;
+  min-height: 16px;
+  height: 16px;
+  padding: 0;
+  margin: 0;
+}
+
+.toggle-inline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 34px;
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: var(--radius-2);
+  background: var(--vscode-editorWidget-background, var(--vscode-sideBar-background));
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+}
+
+.toggle-inline:hover {
+  border-color: var(--vscode-focusBorder, var(--vscode-panel-border));
+}
+
+.toggle-inline span {
+  color: var(--vscode-foreground);
+  font-size: 12px;
+}
+
+#autoWorklog {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 34px;
+  min-width: 34px;
+  height: 20px;
+  min-height: 20px;
+  border-radius: 999px;
+  border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+  background: var(--vscode-input-background);
+  position: relative;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+#autoWorklog::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: var(--vscode-input-foreground);
+  opacity: 0.72;
+  transition: transform 120ms ease, opacity 120ms ease, background-color 120ms ease;
+}
+
+#autoWorklog:checked {
+  background: var(--vscode-button-background, var(--vscode-focusBorder));
+  border-color: var(--vscode-button-background, var(--vscode-focusBorder));
+}
+
+#autoWorklog:checked::before {
+  transform: translateX(14px);
+  background: var(--vscode-button-foreground, var(--vscode-editor-background));
+  opacity: 1;
 }
 
 .hide {
@@ -274,7 +355,8 @@ select:focus-visible {
 
   .row.stack-mobile > button,
   .row.stack-mobile > input,
-  .row.stack-mobile > select {
+  .row.stack-mobile > select,
+  .row.stack-mobile > textarea {
     flex: 1 1 100%;
   }
 

@@ -1,14 +1,16 @@
 import * as vscode from "vscode";
 import { ApiError } from "../api/invoiceNinjaClient";
 import { AuthService } from "../services/authService";
+import { matchesFilterSelection, normalizeFilterSelection } from "../services/filterUtils";
 import { TaskService } from "../services/taskService";
 import { TimerService } from "../services/timerService";
-import { AuthMode, IncomingMessage, LoginInput, SidebarState, TaskReminder } from "../types/contracts";
+import { AuthMode, FILTER_VALUE_ALL, FILTER_VALUE_NONE, IncomingMessage, LoginInput, SidebarState, TaskReminder } from "../types/contracts";
 import { renderSidebarHtml } from "./webview/template";
 import { isTimerOnlyStateUpdate } from "./webview/stateDiff";
 
 const VIEW_ID = "invoiceNinja.sidebar";
 const REMINDER_STORAGE_KEY = "invoiceNinja.taskReminders.v1";
+const AUTO_APPEND_WORKLOG_SETTING = "autoAppendWorkspaceWorklog";
 
 export class SidebarProvider implements vscode.WebviewViewProvider {
   private view?: vscode.WebviewView;
@@ -206,6 +208,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         case "setProjectFilter":
           await this.setProject(message.payload.projectId);
           break;
+        case "setAutoWorklog":
+          await this.setAutoWorklog(message.payload.enabled);
+          break;
         case "startTimer":
           await this.startTimerFromCommand(message.payload?.taskId);
           return;
@@ -276,7 +281,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
   private async setStatus(statusId: string): Promise<void> {
     const session = await this.taskService.getSessionOrThrow();
-    await this.taskService.updatePreferences(session.accountKey, { selectedStatusId: statusId });
+    const normalized = normalizeFilterSelection(statusId);
+    const selectedStatusId = normalized === FILTER_VALUE_NONE ? FILTER_VALUE_ALL : normalized;
+    await this.taskService.updatePreferences(session.accountKey, { selectedStatusId });
     await this.taskService.refresh(session);
   }
 
@@ -284,6 +291,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const session = await this.taskService.getSessionOrThrow();
     await this.taskService.updatePreferences(session.accountKey, { selectedProjectId: projectId });
     await this.taskService.refresh(session);
+  }
+
+  private async setAutoWorklog(enabled: boolean): Promise<void> {
+    await vscode.workspace.getConfiguration("invoiceNinja").update(AUTO_APPEND_WORKLOG_SETTING, enabled, vscode.ConfigurationTarget.Global);
+    this.lastMessage = enabled ? "Auto workspace worklog enabled" : "Auto workspace worklog disabled";
+    this.lastError = "";
   }
 
   private async assignUser(taskId: string): Promise<void> {
@@ -603,9 +616,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         projects: [],
         users: [],
         selectedTaskId: "",
-        selectedStatusId: "",
-        selectedProjectId: "",
+        selectedStatusId: FILTER_VALUE_ALL,
+        selectedProjectId: FILTER_VALUE_ALL,
         lastSearchText: "",
+        autoAppendWorkspaceWorklog: this.isAutoWorklogEnabled(),
         isTimerRunning: false,
         timerTaskId: "",
         timerElapsedSeconds: 0,
@@ -619,11 +633,14 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const active = await this.timerService.getActiveTimer();
     this.authDraft = { mode: session.mode, email: session.email, url: session.baseUrl, secret: session.apiSecret ?? "" };
     const statuses = this.taskService.getStatuses();
-    const doneStatusIds = new Set(statuses.filter((status) => /done|complete/i.test(status.name || "")).map((status) => String(status.id)));
+    const normalizedStatusId = normalizeFilterSelection(prefs.selectedStatusId);
+    const selectedStatusId = normalizedStatusId === FILTER_VALUE_NONE ? FILTER_VALUE_ALL : normalizedStatusId;
+    const selectedProjectId = normalizeFilterSelection(prefs.selectedProjectId);
     const allTasks = this.taskService.getTasks();
     const tasks = allTasks.filter((task) => {
       const statusId = String(task.task_status_id ?? task.status_id ?? "");
-      return statusId ? !doneStatusIds.has(statusId) : true;
+      const projectId = String(task.project_id ?? "");
+      return matchesFilterSelection(selectedStatusId, statusId) && matchesFilterSelection(selectedProjectId, projectId);
     });
 
     return {
@@ -637,9 +654,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       projects: this.taskService.getProjects(),
       users: this.taskService.getUsers(),
       selectedTaskId: prefs.selectedTaskId,
-      selectedStatusId: prefs.selectedStatusId,
-      selectedProjectId: prefs.selectedProjectId,
+      selectedStatusId,
+      selectedProjectId,
       lastSearchText: prefs.lastSearchText,
+      autoAppendWorkspaceWorklog: this.isAutoWorklogEnabled(),
       isTimerRunning: Boolean(active),
       timerTaskId: active?.taskId ?? "",
       timerElapsedSeconds: this.timerService.formatElapsedSeconds(active),
@@ -680,6 +698,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       return error.message;
     }
     return "Unexpected error";
+  }
+
+  private isAutoWorklogEnabled(): boolean {
+    return Boolean(vscode.workspace.getConfiguration("invoiceNinja").get(AUTO_APPEND_WORKLOG_SETTING, false));
   }
 }
 

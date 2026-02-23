@@ -26,6 +26,7 @@ function baseState(): SidebarState {
     selectedStatusId: "",
     selectedProjectId: "",
     lastSearchText: "",
+    autoAppendWorkspaceWorklog: false,
     isTimerRunning: true,
     timerTaskId: "1",
     timerElapsedSeconds: 10,

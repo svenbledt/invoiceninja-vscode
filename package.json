@@ -3,7 +3,7 @@
   "displayName": "Invoice Ninja Time Tracker",
   "description": "Track time in VS Code/Cursor and sync to Invoice Ninja tasks.",
   "license": "MIT",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "SvenBledt",
   "icon": "media/invoiceninja.png",
   "repository": {
@@ -109,6 +109,11 @@
           "type": "boolean",
           "default": true,
           "description": "Restore active timer state after VS Code/Cursor restart."
+        },
+        "invoiceNinja.autoAppendWorkspaceWorklog": {
+          "type": "boolean",
+          "default": false,
+          "description": "Append a managed VS Code worklog section to task descriptions when a timer is stopped."
         }
       }
     }
@@ -117,7 +122,7 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "vscode:prepublish": "pnpm run compile",
-    "test": "pnpm run compile && node --test out/ui/__tests__/stateDiff.test.js out/ui/__tests__/taskElapsedSeconds.test.js out/services/__tests__/authService.test.js"
+    "test": "pnpm run compile && node --test out/ui/__tests__/stateDiff.test.js out/ui/__tests__/taskElapsedSeconds.test.js out/services/__tests__/authService.test.js out/services/__tests__/worklogUtils.test.js out/services/__tests__/filterUtils.test.js"
   },
   "devDependencies": {
     "@types/node": "^20.14.15",

@@ -52,6 +52,7 @@ Command palette shortcuts:
 - `invoiceNinja.defaultProjectId`: Default project ID for new tasks (optional)
 - `invoiceNinja.requestTimeoutMs`: API request timeout in milliseconds (default: `15000`)
 - `invoiceNinja.autoResumeTimer`: Restore active timer after restart (default: `true`)
+- `invoiceNinja.autoAppendWorkspaceWorklog`: Append/merge a managed workspace worklog section into task description on timer stop (default: `false`)
 
 ## Privacy and Security
 

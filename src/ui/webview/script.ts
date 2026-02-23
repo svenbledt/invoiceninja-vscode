@@ -9,6 +9,8 @@ const state = {
   data: null,
   lastPayload: null,
 };
+const FILTER_VALUE_ALL = "__all";
+const FILTER_VALUE_NONE = "__none";
 
 const $ = (id) => document.getElementById(id);
 
@@ -128,6 +130,15 @@ function fmt(total) {
   return hours + ":" + minutes + ":" + seconds;
 }
 
+function autoResizeTextarea(node) {
+  if (!node) {
+    return;
+  }
+
+  node.style.height = "auto";
+  node.style.height = node.scrollHeight + "px";
+}
+
 function clearChildren(node) {
   while (node.firstChild) {
     node.removeChild(node.firstChild);
@@ -138,12 +149,12 @@ function setSelectValueState(selectNode) {
   selectNode.classList.toggle("has-value", Boolean(selectNode.value));
 }
 
-function setOptions(selectNode, entries, placeholder, selected) {
+function setStatusFilterOptions(selectNode, entries, selected) {
   clearChildren(selectNode);
-  const defaultOption = document.createElement("option");
-  defaultOption.value = "";
-  defaultOption.textContent = placeholder;
-  selectNode.appendChild(defaultOption);
+  const allOption = document.createElement("option");
+  allOption.value = FILTER_VALUE_ALL;
+  allOption.textContent = "All statuses";
+  selectNode.appendChild(allOption);
 
   entries.forEach((entry) => {
     const option = document.createElement("option");
@@ -152,7 +163,11 @@ function setOptions(selectNode, entries, placeholder, selected) {
     selectNode.appendChild(option);
   });
 
-  selectNode.value = selected || "";
+  const value = (!selected || selected === FILTER_VALUE_NONE) ? FILTER_VALUE_ALL : selected;
+  selectNode.value = value;
+  if (selectNode.value !== value) {
+    selectNode.value = FILTER_VALUE_ALL;
+  }
   setSelectValueState(selectNode);
 }
 
@@ -186,6 +201,34 @@ function setProjectOptions(selectNode, projects, selected, placeholder) {
     selectNode.appendChild(option);
   });
   selectNode.value = selected || "";
+  setSelectValueState(selectNode);
+}
+
+function setTaskProjectFilterOptions(selectNode, projects, selected) {
+  clearChildren(selectNode);
+
+  const allOption = document.createElement("option");
+  allOption.value = FILTER_VALUE_ALL;
+  allOption.textContent = "All projects";
+  selectNode.appendChild(allOption);
+
+  const noneOption = document.createElement("option");
+  noneOption.value = FILTER_VALUE_NONE;
+  noneOption.textContent = "No project";
+  selectNode.appendChild(noneOption);
+
+  projects.forEach((project) => {
+    const option = document.createElement("option");
+    option.value = esc(project.id);
+    option.textContent = optionLabel(project.name, esc(project.id));
+    selectNode.appendChild(option);
+  });
+
+  const value = selected || FILTER_VALUE_ALL;
+  selectNode.value = value;
+  if (selectNode.value !== value) {
+    selectNode.value = FILTER_VALUE_ALL;
+  }
   setSelectValueState(selectNode);
 }
 
@@ -341,6 +384,7 @@ function isTimerOnlyUpdate(previous, next) {
     previous.selectedStatusId === next.selectedStatusId &&
     previous.selectedProjectId === next.selectedProjectId &&
     previous.lastSearchText === next.lastSearchText &&
+    previous.autoAppendWorkspaceWorklog === next.autoAppendWorkspaceWorklog &&
     previous.errorMessage === next.errorMessage &&
     previous.infoMessage === next.infoMessage &&
     previous.editTask?.id === next.editTask?.id &&
@@ -387,9 +431,10 @@ function render(payload) {
 
   $("acc").textContent = payload.accountLabel;
   $("q").value = payload.lastSearchText || "";
+  $("autoWorklog").checked = Boolean(payload.autoAppendWorkspaceWorklog);
 
-  setOptions($("sf"), payload.statuses, "Status", payload.selectedStatusId);
-  setProjectOptions($("pf"), payload.projects, payload.selectedProjectId, "Project");
+  setStatusFilterOptions($("sf"), payload.statuses, payload.selectedStatusId);
+  setTaskProjectFilterOptions($("pf"), payload.projects, payload.selectedProjectId);
 
   const editing = Boolean(payload.editTask && state.editId === payload.editTask.id);
   $("list").classList.toggle("hide", editing);
@@ -397,6 +442,7 @@ function render(payload) {
   if (editing) {
     $("enum").textContent = taskNo(payload.editTask);
     $("edesc").value = payload.editTask.description || "";
+    autoResizeTextarea($("edesc"));
     $("erate").value = String(payload.editTask.rate || 0);
     setProjectOptions($("eproj"), payload.projects, payload.editTask.project_id || "", "-- Unassigned --");
     setUserOptions($("euser"), payload.users, payload.editTask.assigned_user_id || "");
@@ -440,6 +486,9 @@ $("save").addEventListener("click", () => vscode.postMessage({ type: "saveTask",
 $("search").addEventListener("click", () => vscode.postMessage({ type: "search", payload: { text: $("q").value.trim() } }));
 $("sf").addEventListener("change", (event) => vscode.postMessage({ type: "setStatusFilter", payload: { statusId: event.target.value } }));
 $("pf").addEventListener("change", (event) => vscode.postMessage({ type: "setProjectFilter", payload: { projectId: event.target.value } }));
+$("autoWorklog").addEventListener("change", (event) =>
+  vscode.postMessage({ type: "setAutoWorklog", payload: { enabled: Boolean(event.target.checked) } }),
+);
 $("esave").addEventListener("click", () => {
   if (!state.editId) {
     return;
@@ -550,6 +599,8 @@ window.addEventListener("message", (event) => {
   const node = $(id);
   node.addEventListener("change", () => setSelectValueState(node));
 });
+
+$("edesc").addEventListener("input", (event) => autoResizeTextarea(event.target));
 
 vscode.postMessage({ type: "ready" });
 `;

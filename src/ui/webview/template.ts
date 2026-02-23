@@ -63,6 +63,12 @@ export function renderSidebarHtml(input: SidebarHtmlInput): string {
           <select id="sf" aria-label="Status filter"></select>
           <select id="pf" aria-label="Project filter"></select>
         </div>
+        <div class="row">
+          <label class="toggle-inline" for="autoWorklog">
+            <input id="autoWorklog" type="checkbox" aria-label="Automatically add workspace worklog on timer stop" />
+            <span>Auto add workspace worklog on stop</span>
+          </label>
+        </div>
         <div id="tasks" class="section" role="list" aria-label="Tasks"></div>
         <div id="empty" class="meta empty hide">No tasks found.</div>
       </section>
@@ -70,7 +76,7 @@ export function renderSidebarHtml(input: SidebarHtmlInput): string {
       <section id="edit" class="section hide" aria-label="Edit task">
         <div class="meta">Home / Tasks / Edit</div>
         <h2 id="enum"></h2>
-        <div class="row"><input id="edesc" class="grow" placeholder="Description" aria-label="Task description" /></div>
+        <div class="row"><textarea id="edesc" class="grow auto-grow" rows="1" placeholder="Description" aria-label="Task description"></textarea></div>
         <div class="row"><select id="eproj" class="grow" aria-label="Project"></select></div>
         <div class="row"><input id="erate" class="grow" type="number" aria-label="Rate" /></div>
         <div class="row"><select id="euser" class="grow" aria-label="Assigned user"></select></div>
