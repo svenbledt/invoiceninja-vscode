@@ -351,15 +351,22 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     this.lastMessage = "Task state updated";
   }
 
-  private async saveTaskEdit(payload: { taskId: string; description: string; projectId: string; assignedUserId: string; rate: string }): Promise<void> {
+  private async saveTaskEdit(payload: { taskId: string; description: string; projectId: string; assignedUserId: string; rate?: string }): Promise<void> {
     const session = await this.taskService.getSessionOrThrow();
-    const rate = payload.rate.trim() === "" ? 0 : Number(payload.rate);
-    await this.taskService.updateTask(session, payload.taskId, {
+    const updatePayload: Record<string, unknown> = {
       description: payload.description,
       project_id: payload.projectId || "",
       assigned_user_id: payload.assignedUserId || "",
-      rate: Number.isFinite(rate) ? rate : 0,
-    });
+    };
+    const rawRate = payload.rate?.trim();
+    if (rawRate) {
+      const rate = Number(rawRate);
+      if (!Number.isFinite(rate)) {
+        throw new Error("Rate must be a valid number");
+      }
+      updatePayload.rate = rate;
+    }
+    await this.taskService.updateTask(session, payload.taskId, updatePayload);
     this.lastMessage = "Task updated";
     this.editTaskId = "";
   }

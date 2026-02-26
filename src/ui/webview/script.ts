@@ -440,10 +440,11 @@ function render(payload) {
   $("list").classList.toggle("hide", editing);
   $("edit").classList.toggle("hide", !editing);
   if (editing) {
-    $("enum").textContent = taskNo(payload.editTask);
+    $("enum").textContent = "Task #" + taskNo(payload.editTask);
     $("edesc").value = payload.editTask.description || "";
     autoResizeTextarea($("edesc"));
-    $("erate").value = String(payload.editTask.rate || 0);
+    const hasRate = payload.editTask.rate !== undefined && payload.editTask.rate !== null && esc(payload.editTask.rate).trim() !== "";
+    $("erate").value = hasRate ? String(payload.editTask.rate) : "";
     setProjectOptions($("eproj"), payload.projects, payload.editTask.project_id || "", "-- Unassigned --");
     setUserOptions($("euser"), payload.users, payload.editTask.assigned_user_id || "");
   }

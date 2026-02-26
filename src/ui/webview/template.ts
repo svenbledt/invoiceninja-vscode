@@ -76,10 +76,22 @@ export function renderSidebarHtml(input: SidebarHtmlInput): string {
       <section id="edit" class="section hide" aria-label="Edit task">
         <div class="meta">Home / Tasks / Edit</div>
         <h2 id="enum"></h2>
-        <div class="row"><textarea id="edesc" class="grow auto-grow" rows="1" placeholder="Description" aria-label="Task description"></textarea></div>
-        <div class="row"><select id="eproj" class="grow" aria-label="Project"></select></div>
-        <div class="row"><input id="erate" class="grow" type="number" aria-label="Rate" /></div>
-        <div class="row"><select id="euser" class="grow" aria-label="Assigned user"></select></div>
+        <div class="field">
+          <label for="edesc" class="meta">Task description</label>
+          <div class="row"><textarea id="edesc" class="grow auto-grow" rows="1" placeholder="Description" aria-label="Task description"></textarea></div>
+        </div>
+        <div class="field">
+          <label for="eproj" class="meta">Project assignment</label>
+          <div class="row"><select id="eproj" class="grow" aria-label="Project assignment"></select></div>
+        </div>
+        <div class="field">
+          <label for="erate" class="meta">Hourly rate</label>
+          <div class="row"><input id="erate" class="grow" type="number" placeholder="Keep current if empty" aria-label="Hourly rate" /></div>
+        </div>
+        <div class="field">
+          <label for="euser" class="meta">Assigned user</label>
+          <div class="row"><select id="euser" class="grow" aria-label="Assigned user"></select></div>
+        </div>
         <div class="row stack-mobile">
           <button id="esave" type="button" class="grow">Save</button>
           <button id="eback" type="button">Back</button>

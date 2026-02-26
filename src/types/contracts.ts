@@ -149,7 +149,7 @@ export type IncomingMessage =
   | { type: "assignTaskStatus"; payload: { taskId: string } }
   | { type: "openTaskMenu"; payload: { taskId: string } }
   | { type: "editTask"; payload: { taskId: string } }
-  | { type: "saveTaskEdit"; payload: { taskId: string; description: string; projectId: string; assignedUserId: string; rate: string } }
+  | { type: "saveTaskEdit"; payload: { taskId: string; description: string; projectId: string; assignedUserId: string; rate?: string } }
   | { type: "archiveTask"; payload: { taskId: string } }
   | { type: "deleteTask"; payload: { taskId: string } }
   | { type: "taskReminder"; payload: { taskId: string; value: string } };

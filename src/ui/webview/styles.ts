@@ -225,6 +225,11 @@ input[type="checkbox"] {
   gap: var(--space-2);
 }
 
+.field {
+  display: grid;
+  gap: var(--space-1);
+}
+
 .row {
   display: flex;
   gap: var(--space-2);
