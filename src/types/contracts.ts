@@ -77,6 +77,30 @@ export interface ActiveTimerSession {
   worklogDailyWorkspaceSeconds?: Record<string, number>;
 }
 
+export interface PendingStopPayload extends Record<string, unknown> {
+  description: string;
+  number?: string;
+  time_log: string;
+  is_running: false;
+}
+
+export interface PendingStopEntry {
+  id: string;
+  accountKey: string;
+  baseUrl: string;
+  taskId: string;
+  stoppedAtUnix: number;
+  payload: PendingStopPayload;
+  createdAtUnix: number;
+  retryCount: number;
+  lastError?: string;
+}
+
+export interface StopTimerResult {
+  synced: boolean;
+  task?: InvoiceNinjaTask;
+}
+
 export interface AccountPreferences {
   selectedStatusId: string;
   selectedProjectId: string;

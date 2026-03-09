@@ -1,16 +1,18 @@
 import * as path from "path";
 import * as vscode from "vscode";
 import { InvoiceNinjaClient } from "../api/invoiceNinjaClient";
-import { ActiveTimerSession, AuthSession, InvoiceNinjaTask } from "../types/contracts";
+import { ActiveTimerSession, AuthSession, InvoiceNinjaTask, PendingStopEntry, PendingStopPayload, StopTimerResult } from "../types/contracts";
 import { addIntervalToWorklogMap, mergeDescriptionWithWorklog } from "./worklogUtils";
 
 const ACTIVE_TIMER_KEY = "invoiceNinja.activeTimer";
+const PENDING_STOP_KEY = "invoiceNinja.pendingStops.v1";
 const WORKLOG_RETENTION_DAYS = 14;
 const AUTO_APPEND_WORKLOG_SETTING = "autoAppendWorkspaceWorklog";
 
 export class TimerService {
   private activeTimerVersion = 0;
   private workspaceChangeQueue: Promise<void> = Promise.resolve();
+  private stopMutationQueue: Promise<void> = Promise.resolve();
 
   public constructor(
     private readonly context: vscode.ExtensionContext,
@@ -47,6 +49,7 @@ export class TimerService {
       task.id,
       {
         description: serverTask.description || task.description,
+        number: serverTask.number,
         time_log: JSON.stringify(segments),
         is_running: true,
       },
@@ -71,53 +74,179 @@ export class TimerService {
     return active;
   }
 
-  public async stopTimer(session: AuthSession, taskId: string): Promise<InvoiceNinjaTask> {
+  public async stopTimer(session: AuthSession, taskId: string): Promise<StopTimerResult> {
+    return this.enqueueStopMutation(async () => {
+      const active = await this.getActiveTimer();
+      const stoppedAtUnix = this.nowUnix();
+      const payload = await this.buildStopPayload(session, taskId, stoppedAtUnix, active);
+      const entry = await this.enqueuePendingStop({
+        id: this.createPendingStopId(taskId, stoppedAtUnix),
+        accountKey: session.accountKey,
+        baseUrl: session.baseUrl,
+        taskId,
+        stoppedAtUnix,
+        payload,
+        createdAtUnix: stoppedAtUnix,
+        retryCount: 0,
+      });
+
+      this.activeTimerVersion += 1;
+      await this.context.globalState.update(ACTIVE_TIMER_KEY, undefined);
+
+      const flushResult = await this.flushPendingStopsInternal(session);
+      const syncedTask = flushResult.updatedByEntryId.get(entry.id);
+      return {
+        synced: Boolean(syncedTask),
+        task: syncedTask,
+      };
+    });
+  }
+
+  public async flushPendingStops(session: AuthSession): Promise<InvoiceNinjaTask[]> {
+    const result = await this.enqueueStopMutation(() => this.flushPendingStopsInternal(session));
+    return result.updated;
+  }
+
+  private async buildStopPayload(
+    session: AuthSession,
+    taskId: string,
+    stoppedAtUnix: number,
+    active: ActiveTimerSession | null,
+  ): Promise<PendingStopPayload> {
     const settings = vscode.workspace.getConfiguration("invoiceNinja");
     const timeoutMs = Number(settings.get("requestTimeoutMs", 15000));
-    const now = this.nowUnix();
 
     const serverTask = await this.client.getTask(session.baseUrl, session, taskId, timeoutMs);
     const segments = parseTimeLog(serverTask.time_log);
     const openIndex = segments.findIndex((segment) => !segment[1] || segment[1] <= 0);
-
     if (openIndex >= 0) {
-      segments[openIndex][1] = now;
+      segments[openIndex][1] = stoppedAtUnix;
     } else {
-      segments.push([now, now]);
+      segments.push([stoppedAtUnix, stoppedAtUnix]);
     }
 
-    const active = await this.getActiveTimer();
+    let description = serverTask.description ?? "";
     const shouldMergeWorklog =
       this.isWorklogEnabled() &&
       active &&
       active.taskId === taskId &&
       active.accountKey === session.accountKey &&
       active.baseUrl === session.baseUrl;
-
-    let description = serverTask.description ?? "";
     if (shouldMergeWorklog && active) {
       const worklog = { ...(active.worklogDailyWorkspaceSeconds ?? {}) };
-      this.closeCurrentWorkspaceSegment(worklog, active, now);
+      this.closeCurrentWorkspaceSegment(worklog, active, stoppedAtUnix);
       if (Object.keys(worklog).length > 0) {
-        description = mergeDescriptionWithWorklog(serverTask.description, worklog, now, WORKLOG_RETENTION_DAYS);
+        description = mergeDescriptionWithWorklog(serverTask.description, worklog, stoppedAtUnix, WORKLOG_RETENTION_DAYS);
       }
     }
 
-    const updatedTask = await this.client.updateTask(
-      session.baseUrl,
-      session,
-      taskId,
-      {
-        description,
-        time_log: JSON.stringify(segments),
-        is_running: false,
-      },
-      timeoutMs,
-    );
+    return {
+      description,
+      number: serverTask.number,
+      time_log: JSON.stringify(segments),
+      is_running: false,
+    };
+  }
 
-    this.activeTimerVersion += 1;
-    await this.context.globalState.update(ACTIVE_TIMER_KEY, undefined);
-    return updatedTask;
+  private async enqueuePendingStop(entry: PendingStopEntry): Promise<PendingStopEntry> {
+    const queue = await this.getPendingStops();
+    const duplicate = queue.find((candidate) => this.isDuplicatePendingStop(candidate, entry));
+    if (duplicate) {
+      return duplicate;
+    }
+
+    queue.push(entry);
+    await this.savePendingStops(queue);
+    return entry;
+  }
+
+  private async flushPendingStopsInternal(
+    session: AuthSession,
+  ): Promise<{ updated: InvoiceNinjaTask[]; updatedByEntryId: Map<string, InvoiceNinjaTask> }> {
+    const settings = vscode.workspace.getConfiguration("invoiceNinja");
+    const timeoutMs = Number(settings.get("requestTimeoutMs", 15000));
+    const queue = await this.getPendingStops();
+    const remaining = [...queue];
+    const updated: InvoiceNinjaTask[] = [];
+    const updatedByEntryId = new Map<string, InvoiceNinjaTask>();
+
+    for (const entry of queue) {
+      if (entry.accountKey !== session.accountKey || entry.baseUrl !== session.baseUrl) {
+        continue;
+      }
+
+      try {
+        const result = await this.client.updateTask(
+          session.baseUrl,
+          session,
+          entry.taskId,
+          entry.payload as Record<string, unknown>,
+          timeoutMs,
+        );
+        updated.push(result);
+        updatedByEntryId.set(entry.id, result);
+        const index = remaining.findIndex((candidate) => candidate.id === entry.id);
+        if (index >= 0) {
+          remaining.splice(index, 1);
+        }
+      } catch (error) {
+        const index = remaining.findIndex((candidate) => candidate.id === entry.id);
+        if (index >= 0) {
+          remaining[index] = {
+            ...remaining[index],
+            retryCount: remaining[index].retryCount + 1,
+            lastError: error instanceof Error ? error.message : "Failed to sync stopped timer",
+          };
+        }
+        break;
+      }
+    }
+
+    if (this.pendingStopsChanged(queue, remaining)) {
+      await this.savePendingStops(remaining);
+    }
+    return { updated, updatedByEntryId };
+  }
+
+  private enqueueStopMutation<T>(operation: () => Promise<T>): Promise<T> {
+    const run = this.stopMutationQueue.then(operation, operation);
+    this.stopMutationQueue = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  }
+
+  private async getPendingStops(): Promise<PendingStopEntry[]> {
+    const stored = this.context.globalState.get<PendingStopEntry[]>(PENDING_STOP_KEY, []);
+    if (!Array.isArray(stored)) {
+      return [];
+    }
+    return stored;
+  }
+
+  private async savePendingStops(entries: PendingStopEntry[]): Promise<void> {
+    await this.context.globalState.update(PENDING_STOP_KEY, entries);
+  }
+
+  private pendingStopsChanged(previous: PendingStopEntry[], next: PendingStopEntry[]): boolean {
+    if (previous.length !== next.length) {
+      return true;
+    }
+    return previous.some((entry, index) => JSON.stringify(entry) !== JSON.stringify(next[index]));
+  }
+
+  private isDuplicatePendingStop(a: PendingStopEntry, b: PendingStopEntry): boolean {
+    return (
+      a.accountKey === b.accountKey &&
+      a.baseUrl === b.baseUrl &&
+      a.taskId === b.taskId &&
+      a.stoppedAtUnix === b.stoppedAtUnix
+    );
+  }
+
+  private createPendingStopId(taskId: string, stoppedAtUnix: number): string {
+    return `pst-${taskId}-${stoppedAtUnix}`;
   }
 
   public async clearActiveTimer(): Promise<void> {

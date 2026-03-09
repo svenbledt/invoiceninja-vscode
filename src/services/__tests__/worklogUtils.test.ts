@@ -4,6 +4,7 @@ import {
   WORKLOG_SECTION_END,
   WORKLOG_SECTION_START,
   addIntervalToWorklogMap,
+  finalizeWorklogForCompletedTask,
   localDateKey,
   mergeDescriptionWithWorklog,
   worklogMapKey,
@@ -12,6 +13,31 @@ import {
 function countMatches(haystack: string, needle: string): number {
   return haystack.split(needle).length - 1;
 }
+
+test("mergeDescriptionWithWorklog migrates legacy visible markers to current markers", () => {
+  const now = Math.floor(new Date(2026, 0, 15, 12, 0, 0).getTime() / 1000);
+  const date = localDateKey(now);
+  const legacyStart = "[InvoiceNinja VSCode Worklog]";
+  const legacyEnd = "[/InvoiceNinja VSCode Worklog]";
+  const existing = [
+    "Top",
+    legacyStart,
+    `- ${date} | repo-a | 120s`,
+    legacyEnd,
+  ].join("\n");
+
+  const result = mergeDescriptionWithWorklog(
+    existing,
+    { [worklogMapKey(date, "repo-a")]: 30 },
+    now,
+  );
+
+  assert.equal(result.includes(legacyStart), false);
+  assert.equal(result.includes(legacyEnd), false);
+  assert.equal(countMatches(result, WORKLOG_SECTION_START), 1);
+  assert.equal(countMatches(result, WORKLOG_SECTION_END), 1);
+  assert.match(result, new RegExp(`- ${date} \\| repo-a \\| 150s`));
+});
 
 test("mergeDescriptionWithWorklog appends a new section to the bottom when none exists", () => {
   const now = Math.floor(new Date(2026, 0, 15, 12, 0, 0).getTime() / 1000);
@@ -50,6 +76,48 @@ test("mergeDescriptionWithWorklog updates existing section entries without dupli
   assert.match(result, new RegExp(`- ${date} \\| repo-a \\| 180s`));
   assert.match(result, new RegExp(`- ${date} \\| repo-b \\| 30s`));
   assert.equal(countMatches(result, `- ${date} | repo-a |`), 1);
+});
+
+test("mergeDescriptionWithWorklog can read and update existing HTML worklog rows", () => {
+  const now = Math.floor(new Date(2026, 0, 15, 12, 0, 0).getTime() / 1000);
+  const date = localDateKey(now);
+  const existing = [
+    "Top",
+    WORKLOG_SECTION_START,
+    `<div class="task-time-details">- ${date} | repo-a | 120s</div>`,
+    WORKLOG_SECTION_END,
+  ].join("\n");
+
+  const result = mergeDescriptionWithWorklog(
+    existing,
+    {
+      [worklogMapKey(date, "repo-a")]: 60,
+      [worklogMapKey(date, "repo-b")]: 30,
+    },
+    now,
+  );
+
+  assert.match(result, new RegExp(`- ${date} \\| repo-a \\| 180s`));
+  assert.match(result, new RegExp(`- ${date} \\| repo-b \\| 30s`));
+  assert.equal(countMatches(result, `- ${date} | repo-a |`), 1);
+});
+
+test("finalizeWorklogForCompletedTask converts managed section to html rows", () => {
+  const now = Math.floor(new Date(2026, 0, 15, 12, 0, 0).getTime() / 1000);
+  const date = localDateKey(now);
+  const existing = [
+    "CRM - Restructure",
+    "",
+    WORKLOG_SECTION_START,
+    `- ${date} | repo-a | 120s`,
+    WORKLOG_SECTION_END,
+  ].join("\n");
+
+  const result = finalizeWorklogForCompletedTask(existing);
+
+  assert.equal(result.includes(WORKLOG_SECTION_START), false);
+  assert.equal(result.includes(WORKLOG_SECTION_END), false);
+  assert.match(result, new RegExp(`<div class="task-time-details">- ${date} \\| repo-a \\| 120s<\\/div>`));
 });
 
 test("mergeDescriptionWithWorklog preserves user text outside of managed section", () => {

@@ -4,6 +4,7 @@ import { AuthService } from "../services/authService";
 import { matchesFilterSelection, normalizeFilterSelection } from "../services/filterUtils";
 import { TaskService } from "../services/taskService";
 import { TimerService } from "../services/timerService";
+import { finalizeWorklogForCompletedTask } from "../services/worklogUtils";
 import { AuthMode, FILTER_VALUE_ALL, FILTER_VALUE_NONE, IncomingMessage, LoginInput, SidebarState, TaskReminder } from "../types/contracts";
 import { renderSidebarHtml } from "./webview/template";
 import { isTimerOnlyStateUpdate } from "./webview/stateDiff";
@@ -75,6 +76,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     try {
       const session = await this.authService.getSession();
       if (session) {
+        await this.timerService.flushPendingStops(session);
         const prefs = await this.taskService.getPreferences(session.accountKey);
         await this.taskService.refresh(session, prefs.lastSearchText);
       }
@@ -146,9 +148,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     }
 
     try {
-      const updatedTask = await this.timerService.stopTimer(session, active.taskId);
-      this.taskService.upsertTask(updatedTask);
-      this.lastMessage = "Timer stopped";
+      const result = await this.timerService.stopTimer(session, active.taskId);
+      if (result.task) {
+        this.taskService.upsertTask(result.task);
+      }
+      this.lastMessage = result.synced ? "Timer stopped and synced" : "Timer stopped locally; sync pending";
       this.lastError = "";
       await this.pushState();
     } catch (error) {
@@ -253,6 +257,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
   private async login(payload: LoginInput): Promise<void> {
     const session = await this.authService.login(payload);
+    await this.timerService.flushPendingStops(session);
     await this.taskService.updatePreferences(session.accountKey, { lastSearchText: "", selectedTaskId: "" });
     await this.taskService.refresh(session);
     this.lastMessage = "Logged in";
@@ -341,13 +346,33 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       label: status.name || String(status.id),
       description: String(status.id),
       value: String(status.id),
+      statusName: status.name || String(status.id),
     }));
     const picked = await vscode.window.showQuickPick(picks, { placeHolder: "Set task state" });
     if (!picked) {
       return;
     }
 
-    await this.taskService.updateTask(session, taskId, { task_status_id: picked.value, status_id: picked.value });
+    if (isDoneStatus(picked.statusName)) {
+      const active = await this.timerService.getActiveTimer();
+      if (active?.taskId === taskId && active.accountKey === session.accountKey && active.baseUrl === session.baseUrl) {
+        const stopResult = await this.timerService.stopTimer(session, taskId);
+        if (!stopResult.synced || !stopResult.task) {
+          throw new Error("Timer stop sync is pending. Please refresh and set status again once sync completes.");
+        }
+        this.taskService.upsertTask(stopResult.task);
+      }
+
+      const task = this.taskService.getTasks().find((candidate) => candidate.id === taskId);
+      const finalizedDescription = finalizeWorklogForCompletedTask(task?.description ?? "");
+      await this.taskService.updateTask(session, taskId, {
+        task_status_id: picked.value,
+        status_id: picked.value,
+        description: finalizedDescription,
+      });
+    } else {
+      await this.taskService.updateTask(session, taskId, { task_status_id: picked.value, status_id: picked.value });
+    }
     this.lastMessage = "Task state updated";
   }
 
@@ -731,4 +756,12 @@ function formatDuration(totalSeconds: number): string {
 function userLabel(user: { first_name?: string; last_name?: string; display_name?: string; email?: string; id: string }): string {
   const full = `${user.first_name ?? ""} ${user.last_name ?? ""}`.trim();
   return full || user.display_name || user.email || user.id;
+}
+
+function isDoneStatus(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+  return /(done|complete|completed|closed|finished|erledigt|abgeschlossen|fertig)/i.test(normalized);
 }

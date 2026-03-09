@@ -1,7 +1,12 @@
-export const WORKLOG_SECTION_START = "[InvoiceNinja VSCode Worklog]";
-export const WORKLOG_SECTION_END = "[/InvoiceNinja VSCode Worklog]";
+export const WORKLOG_SECTION_START = "[Worklog Start]";
+export const WORKLOG_SECTION_END = "[Worklog END]";
+const LEGACY_WORKLOG_SECTION_START = "[InvoiceNinja VSCode Worklog]";
+const LEGACY_WORKLOG_SECTION_END = "[/InvoiceNinja VSCode Worklog]";
+const LEGACY_HIDDEN_SECTION_START = '<input type="hidden" data-in-vscode-worklog="start" />';
+const LEGACY_HIDDEN_SECTION_END = '<input type="hidden" data-in-vscode-worklog="end" />';
 
 const WORKLOG_ENTRY_PATTERN = /^-\s+(\d{4}-\d{2}-\d{2})\s+\|\s+(.+)\s+\|\s+(\d+)s\s*$/;
+const WORKLOG_HTML_ENTRY_PATTERN = /^<div class="task-time-details">\s*(.*?)\s*<\/div>$/;
 const DEFAULT_RETENTION_DAYS = 14;
 
 export interface WorklogEntry {
@@ -13,6 +18,7 @@ export interface WorklogEntry {
 interface ParsedWorklogSection {
   startIndex: number;
   endIndex: number;
+  endTokenLength: number;
   entries: WorklogEntry[];
 }
 
@@ -87,24 +93,33 @@ export function mergeDescriptionWithWorklog(
 
   const section = renderWorklogSection(entries);
   if (parsed) {
-    return `${description.slice(0, parsed.startIndex)}${section}${description.slice(parsed.endIndex + WORKLOG_SECTION_END.length)}`;
+    return `${description.slice(0, parsed.startIndex)}${section}${description.slice(parsed.endIndex + parsed.endTokenLength)}`;
   }
 
   return appendSection(description, section);
 }
 
+export function finalizeWorklogForCompletedTask(existingDescription: string | undefined): string {
+  const description = typeof existingDescription === "string" ? existingDescription : "";
+  const parsed = parseWorklogSection(description);
+  if (!parsed) {
+    return description;
+  }
+
+  const htmlSection = renderWorklogHtml(parsed.entries);
+  return `${description.slice(0, parsed.startIndex)}${htmlSection}${description.slice(parsed.endIndex + parsed.endTokenLength)}`;
+}
+
 function parseWorklogSection(description: string): ParsedWorklogSection | null {
-  const startIndex = description.indexOf(WORKLOG_SECTION_START);
-  if (startIndex < 0) {
+  const managedSection = findManagedSection(description);
+  if (!managedSection) {
     return null;
   }
 
-  const endIndex = description.indexOf(WORKLOG_SECTION_END, startIndex + WORKLOG_SECTION_START.length);
-  if (endIndex < 0) {
-    return null;
-  }
-
-  const body = description.slice(startIndex + WORKLOG_SECTION_START.length, endIndex);
+  const body = description.slice(
+    managedSection.startIndex + managedSection.startTokenLength,
+    managedSection.endIndex,
+  );
   const entries: WorklogEntry[] = [];
   for (const rawLine of body.split(/\r?\n/)) {
     const line = rawLine.trim();
@@ -117,10 +132,24 @@ function parseWorklogSection(description: string): ParsedWorklogSection | null {
     }
   }
 
-  return { startIndex, endIndex, entries };
+  return {
+    startIndex: managedSection.startIndex,
+    endIndex: managedSection.endIndex,
+    endTokenLength: managedSection.endTokenLength,
+    entries,
+  };
 }
 
 function parseWorklogLine(line: string): WorklogEntry | null {
+  const htmlMatch = line.match(WORKLOG_HTML_ENTRY_PATTERN);
+  if (htmlMatch) {
+    const inner = decodeHtml(htmlMatch[1]).trim();
+    const parsedInner = parseWorklogLine(inner);
+    if (parsedInner) {
+      return parsedInner;
+    }
+  }
+
   const match = line.match(WORKLOG_ENTRY_PATTERN);
   if (!match) {
     return null;
@@ -215,6 +244,18 @@ function renderWorklogSection(entries: WorklogEntry[]): string {
   return `${WORKLOG_SECTION_START}\n${lines.join("\n")}\n${WORKLOG_SECTION_END}`;
 }
 
+function renderWorklogHtml(entries: WorklogEntry[]): string {
+  if (entries.length === 0) {
+    return "";
+  }
+  return entries
+    .map((entry) => {
+      const safeWorkspace = escapeHtml(entry.workspace);
+      return `<div class="task-time-details">- ${entry.date} | ${safeWorkspace} | ${entry.seconds}s</div>`;
+    })
+    .join("\n");
+}
+
 function appendSection(description: string, section: string): string {
   if (!description) {
     return section;
@@ -240,4 +281,51 @@ function nextLocalDayStartUnix(unixSeconds: number): number {
   const date = new Date(Math.floor(unixSeconds) * 1000);
   date.setHours(24, 0, 0, 0);
   return Math.floor(date.getTime() / 1000);
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function decodeHtml(value: string): string {
+  return value
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, "\"")
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, "&");
+}
+
+function findManagedSection(
+  description: string,
+): { startIndex: number; endIndex: number; startTokenLength: number; endTokenLength: number } | null {
+  const markerPairs = [
+    { start: WORKLOG_SECTION_START, end: WORKLOG_SECTION_END },
+    { start: LEGACY_WORKLOG_SECTION_START, end: LEGACY_WORKLOG_SECTION_END },
+    { start: LEGACY_HIDDEN_SECTION_START, end: LEGACY_HIDDEN_SECTION_END },
+  ];
+
+  for (const pair of markerPairs) {
+    const startIndex = description.indexOf(pair.start);
+    if (startIndex < 0) {
+      continue;
+    }
+    const endIndex = description.indexOf(pair.end, startIndex + pair.start.length);
+    if (endIndex < 0) {
+      continue;
+    }
+    return {
+      startIndex,
+      endIndex,
+      startTokenLength: pair.start.length,
+      endTokenLength: pair.end.length,
+    };
+  }
+
+  return null;
 }

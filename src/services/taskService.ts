@@ -99,7 +99,12 @@ export class TaskService {
   public async updateTask(session: AuthSession, taskId: string, payload: Record<string, unknown>): Promise<InvoiceNinjaTask> {
     const settings = vscode.workspace.getConfiguration("invoiceNinja");
     const timeoutMs = Number(settings.get("requestTimeoutMs", 15000));
-    const updated = await this.client.updateTask(session.baseUrl, session, taskId, payload, timeoutMs);
+    const currentTask = this.tasks.find((task) => task.id === taskId);
+    const hasNumberInPayload = Object.prototype.hasOwnProperty.call(payload, "number");
+    const updatePayload = !hasNumberInPayload && currentTask?.number
+      ? { ...payload, number: currentTask.number }
+      : payload;
+    const updated = await this.client.updateTask(session.baseUrl, session, taskId, updatePayload, timeoutMs);
     this.tasks = this.tasks.map((task) => (task.id === taskId ? { ...task, ...updated } : task));
     return updated;
   }

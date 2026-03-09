@@ -31,6 +31,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   }
   if (existingSession) {
     try {
+      await timerService.flushPendingStops(existingSession);
       await taskService.refresh(existingSession);
     } catch {
       await authService.logout();
